@@ -1,57 +1,104 @@
 import axios from "axios";
 
+function miniPage(content) {
+  return `
+  <html>
+  <head>
+    <meta name="viewport" content="width=240, initial-scale=1">
+    <style>
+      body{background:#000;color:#fff;font-family:Arial;font-size:14px}
+      a{color:yellow;text-decoration:none}
+      input{width:180px}
+    </style>
+  </head>
+  <body>${content}</body>
+  </html>`;
+}
+
 export default async function handler(req, res) {
   try {
-    const { url } = req.query;
-    if (!url) return res.status(400).send("Missing url");
+    const { q, v } = req.query;
 
-    // تحويل روابط youtube العادية إلى نسخة m
-    let target = url
-      .replace("youtube.com", "m.youtube.com")
-      .replace("youtu.be/", "www.youtube.com/watch?v=");
+    // 🔎 وضع البحث
+    if (q) {
+      const searchUrl = `https://m.youtube.com/results?search_query=${encodeURIComponent(q)}`;
 
-    const response = await axios({
-      method: "GET",
-      url: target,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Linux; Android 4.4; Nexus One) AppleWebKit/537.36 Chrome/30 Mobile Safari/537.36"
-      },
-      timeout: 15000
-    });
+      const r = await axios.get(searchUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Linux; Android 4.4; Nexus One) AppleWebKit/537.36 Chrome/30 Mobile Safari/537.36"
+        },
+        timeout: 15000
+      });
 
-    let html = response.data;
+      const html = r.data;
 
-    // استخراج رابط mp4 مباشر
-    const match = html.match(/https:\/\/[^"]+\.googlevideo\.com[^"]+/);
+      const videos = [...html.matchAll(/"videoId":"(.*?)".*?"title":{"runs":\[{"text":"(.*?)"/g)];
 
-    if (!match) {
-      return res.send("Video stream not found");
+      if (!videos.length) {
+        return res.send(miniPage("No results"));
+      }
+
+      let list = `<form>
+        <input name="q" placeholder="Search">
+        <input type="submit" value="Go">
+      </form><hr>`;
+
+      videos.slice(0, 10).forEach(v => {
+        list += `<div>
+          <a href="?v=${v[1]}">${v[2]}</a>
+        </div><br>`;
+      });
+
+      return res.send(miniPage(list));
     }
 
-    const videoUrl = match[0];
+    // ▶ وضع تشغيل فيديو
+    if (v) {
+      const watchUrl = `https://m.youtube.com/watch?v=${v}`;
 
-    // صفحة بسيطة جدًا
-    const simplePage = `
-      <html>
-      <head>
-      <meta name="viewport" content="width=240">
-      </head>
-      <body style="background:black;color:white;text-align:center;">
-        <h3>Video Ready</h3>
+      const r = await axios.get(watchUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Linux; Android 4.4; Nexus One) AppleWebKit/537.36 Chrome/30 Mobile Safari/537.36"
+        }
+      });
+
+      const html = r.data;
+
+      const match = html.match(/https:\/\/[^"]+\.googlevideo\.com[^"]+/);
+
+      if (!match) {
+        return res.send(miniPage("Stream not found"));
+      }
+
+      const videoUrl = match[0];
+
+      const player = `
+        <a href="/">⬅ Back</a><br><br>
         <video width="240" controls>
           <source src="${videoUrl}" type="video/mp4">
         </video>
         <br><br>
-        <a href="${videoUrl}" style="color:yellow;">Direct Link</a>
-      </body>
-      </html>
+        <a href="${videoUrl}">Direct Link</a>
+      `;
+
+      return res.send(miniPage(player));
+    }
+
+    // 🏠 الصفحة الرئيسية
+    const home = `
+      <h3>S60 YouTube Lite</h3>
+      <form>
+        <input name="q" placeholder="Search YouTube">
+        <input type="submit" value="Search">
+      </form>
     `;
 
     res.setHeader("Content-Type", "text/html");
-    return res.send(simplePage);
+    return res.send(miniPage(home));
 
   } catch (err) {
-    return res.status(500).send("S60 YouTube Mode Error");
+    return res.status(500).send("Engine Error");
   }
 }
