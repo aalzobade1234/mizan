@@ -2,35 +2,56 @@ import axios from "axios";
 
 export default async function handler(req, res) {
   try {
-    const { url, ua } = req.query;
+    const { url } = req.query;
     if (!url) return res.status(400).send("Missing url");
+
+    // تحويل روابط youtube العادية إلى نسخة m
+    let target = url
+      .replace("youtube.com", "m.youtube.com")
+      .replace("youtu.be/", "www.youtube.com/watch?v=");
 
     const response = await axios({
       method: "GET",
-      url,
-      responseType: "arraybuffer",
+      url: target,
       headers: {
         "User-Agent":
-          ua ||
-          "Mozilla/5.0 (Linux; Android 12; Mini S60 Touch) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
-        "Accept": "*/*"
+          "Mozilla/5.0 (Linux; Android 4.4; Nexus One) AppleWebKit/537.36 Chrome/30 Mobile Safari/537.36"
       },
-      maxRedirects: 5,
-      timeout: 15000,
-      validateStatus: () => true
+      timeout: 15000
     });
 
-    const contentType = response.headers["content-type"] || "text/html";
+    let html = response.data;
 
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    // استخراج رابط mp4 مباشر
+    const match = html.match(/https:\/\/[^"]+\.googlevideo\.com[^"]+/);
 
-    return res.status(response.status).send(response.data);
+    if (!match) {
+      return res.send("Video stream not found");
+    }
 
-  } catch (error) {
-    return res.status(500).json({
-      error: "Proxy Failed",
-      message: error.message
-    });
+    const videoUrl = match[0];
+
+    // صفحة بسيطة جدًا
+    const simplePage = `
+      <html>
+      <head>
+      <meta name="viewport" content="width=240">
+      </head>
+      <body style="background:black;color:white;text-align:center;">
+        <h3>Video Ready</h3>
+        <video width="240" controls>
+          <source src="${videoUrl}" type="video/mp4">
+        </video>
+        <br><br>
+        <a href="${videoUrl}" style="color:yellow;">Direct Link</a>
+      </body>
+      </html>
+    `;
+
+    res.setHeader("Content-Type", "text/html");
+    return res.send(simplePage);
+
+  } catch (err) {
+    return res.status(500).send("S60 YouTube Mode Error");
   }
 }
