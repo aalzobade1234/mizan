@@ -19,44 +19,42 @@ export default async function handler(req, res) {
   try {
     const { q, v } = req.query;
 
-    // 🎬 تشغيل فيديو
+    // ▶ تشغيل فيديو
     if (v) {
       const embedUrl = `https://www.youtube.com/embed/${v}`;
-
       return res.send(page(`
         <a href="/">⬅ Back</a><br><br>
         <b>Video ID:</b> ${v}<br><br>
         <iframe width="240" height="200"
           src="${embedUrl}"
           frameborder="0"></iframe>
-        <br><br>
-        <a href="?v=${v}">Reload</a>
       `));
     }
 
-    // 🔎 البحث
+    // 🔎 بحث عبر Innertube API
     if (q) {
-      const searchUrl = `https://m.youtube.com/results?search_query=${encodeURIComponent(q)}`;
 
-      const r = await axios.get(searchUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Linux; Android 6.0; Nexus 5) AppleWebKit/537.36 Chrome/90 Mobile Safari/537.36"
+      const response = await axios.post(
+        "https://www.youtube.com/youtubei/v1/search?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+        {
+          query: q,
+          context: {
+            client: {
+              clientName: "ANDROID",
+              clientVersion: "16.20"
+            }
+          }
         },
-        timeout: 10000
-      });
+        {
+          headers: {
+            "Content-Type": "application/json"
+          },
+          timeout: 10000
+        }
+      );
 
-      const html = r.data;
-
-      // استخراج videoId بطريقة خفيفة جدًا
-      const ids = [...new Set(
-        (html.match(/"videoId":"(.*?)"/g) || [])
-          .map(x => x.replace(/"|videoId|:/g, ""))
-      )];
-
-      if (!ids.length) {
-        return res.send(page("No results found"));
-      }
+      const items =
+        response.data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
 
       let list = `
         <form>
@@ -65,11 +63,27 @@ export default async function handler(req, res) {
         </form><hr>
       `;
 
-      ids.slice(0, 15).forEach(id => {
-        list += `<div>
-          <a href="?v=${id}">${id}</a>
-        </div><br>`;
+      let count = 0;
+
+      items.forEach(section => {
+        const videos = section.itemSectionRenderer?.contents || [];
+        videos.forEach(item => {
+          const videoId = item.videoRenderer?.videoId;
+          const title =
+            item.videoRenderer?.title?.runs?.[0]?.text;
+
+          if (videoId && count < 15) {
+            list += `<div>
+              <a href="?v=${videoId}">${title}</a>
+            </div><br>`;
+            count++;
+          }
+        });
       });
+
+      if (count === 0) {
+        return res.send(page("No results found"));
+      }
 
       return res.send(page(list));
     }
