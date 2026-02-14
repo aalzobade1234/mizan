@@ -4,69 +4,84 @@ import axios from "axios";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const API_KEY = process.env.YT_KEY; // ضع المفتاح في متغير بيئة
+const API_KEY = "AIzaSyA13g5wscZCwXCge9KTH9-47nlc3hwg808";
 
 /* =========================
-   🔎 SEARCH PROXY
+   SEARCH
 ========================= */
 
 app.get("/api/search", async (req, res) => {
   try {
     const q = req.query.q;
-    if (!q) return res.json([]);
+    if (!q) return res.send("No query");
 
-    const url =
-      "https://www.googleapis.com/youtube/v3/search";
-
-    const response = await axios.get(url, {
-      params: {
-        part: "snippet",
-        type: "video",
-        maxResults: 10,
-        q,
-        key: API_KEY
+    const response = await axios.get(
+      "https://www.googleapis.com/youtube/v3/search",
+      {
+        params: {
+          part: "snippet",
+          type: "video",
+          maxResults: 8,
+          q: q,
+          key: API_KEY
+        }
       }
+    );
+
+    let html = `
+      <html>
+      <body style="background:black;color:white;font-family:sans-serif">
+      <h3>Results</h3>
+    `;
+
+    response.data.items.forEach(item => {
+      const id = item.id.videoId;
+      const title = item.snippet.title;
+
+      html += `
+        <div style="margin-bottom:12px">
+          <a style="color:cyan"
+             href="/play?id=${id}">
+             ${title}
+          </a>
+        </div>
+      `;
     });
 
-    const results = response.data.items.map(item => ({
-      id: item.id.videoId,
-      title: item.snippet.title,
-      thumb: item.snippet.thumbnails.default.url
-    }));
+    html += "</body></html>";
 
-    res.json(results);
-  } catch (err) {
-    res.json([]);
+    res.send(html);
+
+  } catch {
+    res.send("Error");
   }
 });
 
 /* =========================
-   ▶ EXTRACT ID + EMBED
+   PLAY USING EMBED
 ========================= */
 
-app.get("/watch", (req, res) => {
-  const url = req.query.url;
-  if (!url) return res.send("No URL");
-
-  const match = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (!match) return res.send("Invalid link");
-
-  const id = match[1];
+app.get("/play", (req, res) => {
+  const id = req.query.id;
+  if (!id) return res.send("No video");
 
   res.send(`
     <html>
-    <body style="background:black;color:white;text-align:center">
-      <h3>Playing</h3>
+    <body style="background:black;text-align:center;margin:0">
 
-      <iframe width="320" height="200"
-        src="https://www.youtube.com/embed/${id}"
-        frameborder="0" allowfullscreen>
+      <iframe
+        width="100%"
+        height="220"
+        src="https://www.youtube.com/embed/${id}?rel=0&autoplay=1"
+        frameborder="0"
+        allowfullscreen>
       </iframe>
 
       <br><br>
 
-      <a href="https://www.youtube.com/watch?v=${id}">
-        Open in External Player
+      <a style="color:cyan"
+         href="https://www.youtube.com/watch?v=${id}">
+         Open in External Player
       </a>
 
     </body>
@@ -77,5 +92,5 @@ app.get("/watch", (req, res) => {
 /* ========================= */
 
 app.listen(PORT, () => {
-  console.log("YouTube Proxy Running");
+  console.log("YouTube Embed Proxy Running");
 });
