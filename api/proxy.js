@@ -1,48 +1,46 @@
-if (v) {
-  const watchUrl = `https://www.youtube.com/watch?v=${v}&bpctr=9999999999&has_verified=1`;
+import axios from "axios";
 
-  const r = await axios.get(watchUrl, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Linux; Android 6.0; Nexus 5) AppleWebKit/537.36 Chrome/90 Mobile Safari/537.36"
+function page(content) {
+  return `
+  <html>
+  <head>
+  <meta name="viewport" content="width=240">
+  </head>
+  <body style="background:black;color:white;font-family:Arial">
+  ${content}
+  </body>
+  </html>`;
+}
+
+export default async function handler(req, res) {
+  try {
+    const { v } = req.query;
+
+    if (!v) {
+      return res.send(page(`
+        <h3>S60 YouTube Lite</h3>
+        <form>
+        <input name="v" placeholder="Video ID">
+        <input type="submit" value="Open">
+        </form>
+      `));
     }
-  });
 
-  const html = r.data;
+    // لا نحاول استخراج mp4 (يسبب crash)
+    // فقط نستخدم embed خفيف
 
-  const playerResponseMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
+    const embedUrl = `https://www.youtube.com/embed/${v}`;
 
-  if (!playerResponseMatch) {
-    return res.send(miniPage("Player JSON not found"));
+    return res.send(page(`
+      <a href="/">⬅ Back</a><br><br>
+      <iframe width="240" height="200"
+      src="${embedUrl}"
+      frameborder="0"></iframe>
+      <br><br>
+      <a href="${embedUrl}">Open Direct</a>
+    `));
+
+  } catch (err) {
+    return res.status(200).send(page("Engine safe mode"));
   }
-
-  const playerJson = JSON.parse(playerResponseMatch[1]);
-
-  const formats =
-    playerJson?.streamingData?.formats ||
-    playerJson?.streamingData?.adaptiveFormats;
-
-  if (!formats || !formats.length) {
-    return res.send(miniPage("No streaming formats found"));
-  }
-
-  // نختار أقل جودة
-  const lowest = formats.sort((a, b) => (a.bitrate || 0) - (b.bitrate || 0))[0];
-
-  if (!lowest.url) {
-    return res.send(miniPage("Signature protected video"));
-  }
-
-  const videoUrl = lowest.url;
-
-  const player = `
-    <a href="/">⬅ Back</a><br><br>
-    <video width="240" controls>
-      <source src="${videoUrl}" type="video/mp4">
-    </video>
-    <br><br>
-    <a href="${videoUrl}">Direct Link</a>
-  `;
-
-  return res.send(miniPage(player));
 }
