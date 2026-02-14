@@ -2,49 +2,67 @@ import axios from "axios";
 import zlib from "zlib";
 
 export default async function handler(req, res) {
-  const { url, ua } = req.query;
-  if (!url) return res.status(400).send("Missing url");
-
   try {
+    const { url, ua } = req.query;
+
+    if (!url) {
+      return res.status(400).json({ error: "Missing url parameter" });
+    }
+
     const response = await axios({
       method: "GET",
       url,
       responseType: "arraybuffer",
       headers: {
-        "User-Agent": ua || 
-        "Mozilla/5.0 (Linux; Android 12; Mini S60 Touch) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
-        "Accept-Encoding": "gzip, deflate"
+        "User-Agent":
+          ua ||
+          "Mozilla/5.0 (Linux; Android 12; Mini S60 Touch) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36",
+        "Accept": "text/html",
+        "Accept-Encoding": "identity"
       },
-      timeout: 15000
+      maxRedirects: 5,
+      timeout: 15000,
+      validateStatus: () => true
     });
+
+    const contentType = response.headers["content-type"] || "";
+
+    // لو ليس HTML نعيده كما هو
+    if (!contentType.includes("text/html")) {
+      res.setHeader("Content-Type", contentType);
+      return res.send(response.data);
+    }
 
     let html = response.data.toString("utf-8");
 
-    // إزالة سكربتات
-    html = html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+    // تنظيف آمن
+    html = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
+      .replace(/<img[^>]*>/gi, "")
+      .replace(/<link[^>]*stylesheet[^>]*>/gi, "")
+      .replace(/\s{2,}/g, " ");
 
-    // إزالة CSS خارجي
-    html = html.replace(/<link[^>]*stylesheet[^>]*>/gi, "");
+    // إضافة viewport صغير
+    html = html.replace(
+      /<head>/i,
+      `<head><meta name="viewport" content="width=240, initial-scale=1">`
+    );
 
-    // إزالة صور كبيرة
-    html = html.replace(/<img[^>]*>/gi, "");
-
-    // إزالة iframe
-    html = html.replace(/<iframe[\s\S]*?<\/iframe>/gi, "");
-
-    // تبسيط المسافات
-    html = html.replace(/\s+/g, " ");
-
-    // ضغط gzip
+    // ضغط آمن
     const compressed = zlib.gzipSync(html);
 
     res.setHeader("Content-Encoding", "gzip");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Access-Control-Allow-Origin", "*");
 
-    res.send(compressed);
+    return res.status(200).send(compressed);
 
-  } catch (err) {
-    res.status(500).send("Fetch failed");
+  } catch (error) {
+    return res.status(500).json({
+      error: "Proxy Error",
+      message: error.message
+    });
   }
 }
