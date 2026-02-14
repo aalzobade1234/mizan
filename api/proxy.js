@@ -5,48 +5,32 @@ export default async function handler(req, res) {
     const { url, ua } = req.query;
     if (!url) return res.status(400).send("Missing url");
 
-    const isGoogle = url.includes("google.");
-
     const response = await axios({
-      method: req.method,
+      method: "GET",
       url,
-      data: req.body,
-      responseType: "stream",
+      responseType: "arraybuffer",
       headers: {
-        ...req.headers,
-        host: new URL(url).host,
         "User-Agent":
           ua ||
-          "Mozilla/5.0 (Linux; Android 12; Mini S60 Touch) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36"
+          "Mozilla/5.0 (Linux; Android 12; Mini S60 Touch) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
+        "Accept": "*/*"
       },
       maxRedirects: 5,
+      timeout: 15000,
       validateStatus: () => true
     });
 
+    const contentType = response.headers["content-type"] || "text/html";
+
+    res.setHeader("Content-Type", contentType);
     res.setHeader("Access-Control-Allow-Origin", "*");
 
-    // لو Google لا نعدل المحتوى
-    if (isGoogle) {
-      res.status(response.status);
-      return response.data.pipe(res);
-    }
+    return res.status(response.status).send(response.data);
 
-    // لباقي المواقع (تبسيط خفيف فقط)
-    let data = "";
-    response.data.on("data", chunk => {
-      data += chunk.toString();
+  } catch (error) {
+    return res.status(500).json({
+      error: "Proxy Failed",
+      message: error.message
     });
-
-    response.data.on("end", () => {
-      data = data
-        .replace(/<script[\s\S]*?<\/script>/gi, "")
-        .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
-        .replace(/<img[^>]*>/gi, "");
-
-      res.status(200).send(data);
-    });
-
-  } catch (err) {
-    res.status(500).send("Proxy Error");
   }
 }
