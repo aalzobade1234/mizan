@@ -1,62 +1,81 @@
-// 🔎 البحث بدون API
-if (q) {
+import express from "express";
+import axios from "axios";
 
-  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-  const r = await axios.get(searchUrl, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Linux; Android 6.0; Nexus 5) AppleWebKit/537.36 Chrome/90 Mobile Safari/537.36"
-    },
-    timeout: 10000
-  });
+const API_KEY = process.env.YT_KEY; // ضع المفتاح في متغير بيئة
 
-  const html = r.data;
+/* =========================
+   🔎 SEARCH PROXY
+========================= */
 
-  // استخراج ytInitialData بطريقة آمنة
-  const match = html.match(/ytInitialData\s*=\s*(\{.*?\});/s);
-
-  if (!match) {
-    return res.send(page("Search failed"));
-  }
-
-  let json;
+app.get("/api/search", async (req, res) => {
   try {
-    json = JSON.parse(match[1]);
-  } catch {
-    return res.send(page("Parse error"));
-  }
+    const q = req.query.q;
+    if (!q) return res.json([]);
 
-  const sections =
-    json?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+    const url =
+      "https://www.googleapis.com/youtube/v3/search";
 
-  let list = `
-    <form>
-      <input name="q" placeholder="Search">
-      <input type="submit" value="Go">
-    </form><hr>
-  `;
-
-  let count = 0;
-
-  sections.forEach(section => {
-    const items = section.itemSectionRenderer?.contents || [];
-    items.forEach(item => {
-      const videoId = item.videoRenderer?.videoId;
-      const title = item.videoRenderer?.title?.runs?.[0]?.text;
-
-      if (videoId && count < 10) {
-        list += `<div>
-          <a href="?v=${videoId}">${title}</a>
-        </div><br>`;
-        count++;
+    const response = await axios.get(url, {
+      params: {
+        part: "snippet",
+        type: "video",
+        maxResults: 10,
+        q,
+        key: API_KEY
       }
     });
-  });
 
-  if (count === 0) {
-    return res.send(page("No results found"));
+    const results = response.data.items.map(item => ({
+      id: item.id.videoId,
+      title: item.snippet.title,
+      thumb: item.snippet.thumbnails.default.url
+    }));
+
+    res.json(results);
+  } catch (err) {
+    res.json([]);
   }
+});
 
-  return res.send(page(list));
-}
+/* =========================
+   ▶ EXTRACT ID + EMBED
+========================= */
+
+app.get("/watch", (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.send("No URL");
+
+  const match = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (!match) return res.send("Invalid link");
+
+  const id = match[1];
+
+  res.send(`
+    <html>
+    <body style="background:black;color:white;text-align:center">
+      <h3>Playing</h3>
+
+      <iframe width="320" height="200"
+        src="https://www.youtube.com/embed/${id}"
+        frameborder="0" allowfullscreen>
+      </iframe>
+
+      <br><br>
+
+      <a href="https://www.youtube.com/watch?v=${id}">
+        Open in External Player
+      </a>
+
+    </body>
+    </html>
+  `);
+});
+
+/* ========================= */
+
+app.listen(PORT, () => {
+  console.log("YouTube Proxy Running");
+});
