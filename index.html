@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>J2ME ZIP Builder</title>
+<style>
+body{background:#111;color:#0f0;font-family:monospace;text-align:center}
+.box{margin-top:40px}
+input,button{padding:10px;margin:5px;background:#000;color:#0f0;border:1px solid #0f0}
+</style>
+</head>
+<body>
+
+<h2>Mizan J2ME Builder</h2>
+
+<div class="box">
+<input type="file" id="zipFile" accept=".zip"><br>
+<input type="text" id="username" placeholder="GitHub Username"><br>
+<input type="text" id="repo" placeholder="Repository Name"><br>
+<input type="password" id="token" placeholder="GitHub Token"><br>
+<button onclick="upload()">Upload & Build</button>
+</div>
+
+<pre id="log"></pre>
+
+<script>
+async function upload() {
+
+let file = document.getElementById("zipFile").files[0];
+let username = document.getElementById("username").value;
+let repo = document.getElementById("repo").value;
+let token = document.getElementById("token").value;
+
+if(!file){ alert("اختر ملف ZIP"); return; }
+
+let log = document.getElementById("log");
+log.textContent = "Uploading...\n";
+
+let reader = new FileReader();
+reader.readAsArrayBuffer(file);
+
+reader.onload = async function() {
+
+let content = btoa(
+  new Uint8Array(reader.result)
+  .reduce((data, byte) => data + String.fromCharCode(byte), '')
+);
+
+let uploadResponse = await fetch(
+  `https://api.github.com/repos/${username}/${repo}/contents/project.zip`,
+  {
+    method: "PUT",
+    headers: {
+      "Authorization": "token " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: "Upload project.zip",
+      content: content
+    })
+  }
+);
+
+if(uploadResponse.status === 201 || uploadResponse.status === 200){
+  log.textContent += "ZIP Uploaded ✔\nTriggering build...\n";
+} else
